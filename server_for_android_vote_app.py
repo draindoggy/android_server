@@ -14,11 +14,6 @@ with open("newest_poll.abi", "r") as abi_file:
 
 contract = web3.eth.contract(address=contract_address, abi=contract_abi)
 
-cache = {
-    "polls": None,
-    "results": {}
-}
-
 @app.route('/create_poll', methods=['POST'])
 def create_poll():
     data = request.json
@@ -49,12 +44,9 @@ def create_poll():
 
         signed_txn = web3.eth.account.sign_transaction(transaction, private_key=private_key)
         tx_hash = web3.eth.send_raw_transaction(signed_txn.rawTransaction)
-
         tx_receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if tx_receipt.status == 1:
-            cache["polls"] = None
-            cache["results"] = {}
             return jsonify({"success": True, "tx_hash": web3.to_hex(tx_hash)}), 200
         else:
             return jsonify({"error": "Транзакция не была подтверждена."}), 500
@@ -64,26 +56,24 @@ def create_poll():
 @app.route('/show_polls', methods=['GET'])
 def show_polls():
     try:
-        if cache["polls"] is None:
-            cache["polls"] = contract.functions.getAllPolls().call()
-        titles, all_options = cache["polls"]
+        titles, all_options = contract.functions.getAllPolls().call()
+        app.logger.info(f"Fetched polls: {titles}, {all_options}")
         return jsonify({"titles": titles, "options": all_options}), 200
     except Exception as e:
+        app.logger.error(f"Error fetching polls: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/show_results', methods=['GET'])
 def show_results():
     try:
-        if cache["polls"] is None:
-            cache["polls"] = contract.functions.getAllPolls().call()
-        titles, all_options = cache["polls"]
+        titles, all_options = contract.functions.getAllPolls().call()
         results = {}
         for i, title in enumerate(titles):
-            if i not in cache["results"]:
-                cache["results"][i] = contract.functions.getResults(i).call()
-            results[title] = cache["results"][i]
+            results[title] = contract.functions.getResults(i).call()
+        app.logger.info(f"Fetched results: {results}")
         return jsonify(results), 200
     except Exception as e:
+        app.logger.error(f"Error fetching results: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/cast_vote', methods=['POST'])
@@ -112,12 +102,9 @@ def cast_vote():
 
         signed_txn = web3.eth.account.sign_transaction(transaction, private_key=private_key)
         tx_hash = web3.eth.send_raw_transaction(signed_txn.rawTransaction)
-
         tx_receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if tx_receipt.status == 1:
-            if poll_index in cache["results"]:
-                del cache["results"][poll_index]
             return jsonify({"success": True, "tx_hash": web3.to_hex(tx_hash)}), 200
         else:
             return jsonify({"error": "Транзакция не была подтверждена."}), 500
